@@ -1,6 +1,6 @@
 # AI 프로그래밍 및 실습 프로젝트
 
-수업에서 배운 머신러닝을 실제 금융 데이터에 적용한 프로젝트 두 개가 들어 있다.
+수업에서 배운 머신러닝을 실제 금융 데이터에 적용한 프로젝트 두 개와 보조 실험 하나가 들어 있다.
 
 | | ETF 지도 (발표용) | 주간 변동성 예측 |
 |---|---|---|
@@ -34,12 +34,20 @@ S&P 500, KOSPI, 금 ETF(GLD), 하이트진로의 다음 주 실현 변동성을 
 - 고변동 주간 분류: 로지스틱 회귀 AUC 0.79
 - 하이트진로의 월별 변동성 차이는 p = 0.066으로 뚜렷하지 않았고, 계절 특성은 예측 성능을 거의 바꾸지 않았다
 
+## 보조 실험: 주차별 계절성 (`weekly_seasonality.ipynb`)
+
+"매년 이 주차에는 오른다"는 패턴으로 주간 상승·하락을 맞힐 수 있는지 S&P 500, KOSPI, 금 ETF, 하이트진로로 검증했다.
+
+- 주차별 평균 수익률을 집계하면 눈에 띄는 주차가 보인다 (|t| > 2인 주차가 자산별 3~6개, 우연 기대 약 2.6개)
+- 주차 통계를 특성으로 넣어 해마다 다음 해를 예측하면 사라진다. 계절 특성 모델 4종의 평균 정확도는 S&P 500 56.6%, KOSPI 52.4%, 금 50.6%, 하이트진로 51.8%이고, "항상 다수 쪽으로 찍기"는 57.5%, 53.8%, 50.7%, 49.0%다
+- 모델이 상승이라고 한 주와 하락이라고 한 주의 실제 수익률 차이가 유의한 조합은 53개 중 0개였다
+
 ## 파일
 
 | 파일 | 내용 |
 |---|---|
-| `etf_map.py`, `volatility_forecast.py` | 노트북 원본 (jupytext 형식, 수정은 여기서) |
-| `etf_map.ipynb`, `volatility_forecast.ipynb` | 실행 결과가 들어 있는 노트북 |
+| `etf_map.py`, `volatility_forecast.py`, `weekly_seasonality.py` | 노트북 원본 (jupytext 형식, 수정은 여기서) |
+| `etf_map.ipynb`, `volatility_forecast.ipynb`, `weekly_seasonality.ipynb` | 실행 결과가 들어 있는 노트북 |
 | `build_notebook.sh` | 원본을 노트북으로 바꿔 실행하고 `docs/`의 데이터 파일을 갱신 |
 | `data/` | ETF 목록, 야후 파이낸스에서 받은 시세 |
 | `docs/` | 웹 페이지. 서버 없이 `docs/index.html`을 브라우저로 열면 된다 |
@@ -54,7 +62,7 @@ pip install -r requirements.txt
 ./build_notebook.sh etf_map
 ```
 
-인자를 빼면 두 노트북을 모두 다시 만든다. ETF 시세를 새로 받으려면 `etf_map.py`의 `REFRESH`를 `True`로 바꾼다.
+인자를 빼면 ETF 지도와 변동성 예측 노트북을 다시 만든다. 주차별 계절성은 `./build_notebook.sh weekly_seasonality`로 만든다. ETF 시세를 새로 받으려면 `etf_map.py`의 `REFRESH`를 `True`로 바꾼다.
 
 GitHub Pages로 공개하려면 저장소 Settings → Pages에서 브랜치의 `/docs` 폴더를 지정한다.
 
