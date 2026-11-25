@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>주간 변동성 예보</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap">
+<style>
+/* 레이아웃: 위에서 아래로 "이번 주 예보 → 선택한 자산 상세 → 모델 성적표" 순서의 한 열 대시보드 */
+:root {
+  --bg: #f3f5f8;
+  --surface: #ffffff;
+  --line: #dde2ea;
+  --fg: #16202e;
+  --muted: #5d6b7e;
+  --accent: #0b6e8f;        /* 예측 */
+  --accent-soft: #d8ecf3;
+  --actual: #8b97a8;        /* 실제 */
+  --high: #c2410c;          /* 고변동 */
+  --high-soft: #fdebdf;
+  --calm: #1f7a4d;          /* 보통 */
+  --calm-soft: #dff3e8;
+  --font: "IBM Plex Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f151d; --surface: #18212d; --line: #2a3645; --fg: #e6ecf3; --muted: #93a1b4;
+    --accent: #4fb6d6; --accent-soft: #173645; --actual: #6f7d90;
+    --high: #f08a54; --high-soft: #3b2418; --calm: #5cc491; --calm-soft: #173426;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f151d; --surface: #18212d; --line: #2a3645; --fg: #e6ecf3; --muted: #93a1b4;
+  --accent: #4fb6d6; --accent-soft: #173645; --actual: #6f7d90;
+  --high: #f08a54; --high-soft: #3b2418; --calm: #5cc491; --calm-soft: #173426;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0; background: var(--bg); color: var(--fg);
+  font-family: var(--font); font-size: 15px; line-height: 1.6;
+}
+.wrap {
+  max-width: 1080px; margin: 0 auto; padding-block: 32px 56px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 28px;
+}
+h1 { font-size: 1.75rem; line-height: 1.25; margin: 0; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+h2 { font-size: 1.1rem; margin: 0; font-weight: 600; text-wrap: balance; }
+p { margin: 0; }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 0.85rem; }
+
+header { display: flex; flex-direction: column; gap: 8px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px 18px; color: var(--muted); font-size: 0.875rem; }
+.meta b { color: var(--fg); font-weight: 500; }
+
+section { display: flex; flex-direction: column; gap: 12px; }
+.section-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 16px; }
+
+/* 예보 카드: 자산 선택 버튼을 겸한다 */
+.cards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.card {
+  font: inherit; color: inherit; text-align: left; cursor: pointer;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  padding: 16px; display: flex; flex-direction: column; gap: 10px; min-width: 0;
+}
+.card:hover { border-color: var(--accent); }
+.card:focus-visible, .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.card[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.card-top { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.card-name { font-weight: 600; }
+.card-ticker { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); }
+.card-value { font-family: var(--mono); font-size: 2rem; font-weight: 600; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.card-value small { font-size: 0.95rem; font-weight: 400; color: var(--muted); }
+.card-change { font-size: 0.85rem; color: var(--muted); }
+.range { position: relative; height: 6px; background: var(--line); border-radius: 3px; }
+.range i { position: absolute; top: 0; bottom: 0; background: var(--accent-soft); border-radius: 3px; }
+.range b { position: absolute; top: -3px; width: 3px; height: 12px; background: var(--accent); border-radius: 2px; }
+.range u { position: absolute; top: -3px; width: 0; height: 12px; border-left: 2px dotted var(--high); }
+.range-label { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); }
+.pill { align-self: flex-start; font-size: 0.8rem; font-weight: 500; padding: 2px 10px; border-radius: 999px; }
+.pill.high { background: var(--high-soft); color: var(--high); }
+.pill.calm { background: var(--calm-soft); color: var(--calm); }
+.pill.mid { background: var(--line); color: var(--fg); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.two { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 12px; }
+.chart-box { position: relative; height: 300px; }
+.chart-box.short { height: 240px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 0.82rem; color: var(--muted); }
+.legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 6px; vertical-align: middle; background: var(--c); }
+.seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+.seg button { font: inherit; font-size: 0.82rem; padding: 4px 12px; background: transparent; color: var(--muted); border: 0; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--accent-soft); color: var(--fg); font-weight: 500; }
+.facts { display: flex; flex-wrap: wrap; gap: 8px 28px; }
+.fact { display: flex; flex-direction: column; }
+.fact span { font-size: 0.78rem; color: var(--muted); }
+.fact b { font-family: var(--mono); font-size: 1.15rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.table-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.875rem; }
+th, td { padding: 7px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { font-weight: 500; color: var(--muted); font-size: 0.78rem; }
+th:first-child, td:first-child { text-align: left; }
+td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+tr:last-child td { border-bottom: 0; }
+tr.best td:first-child { font-weight: 600; }
+tr.base td { color: var(--muted); }
+.tag { font-size: 0.72rem; color: var(--muted); margin-left: 6px; }
+.badge { font-size: 0.7rem; font-weight: 500; color: var(--accent); border: 1px solid var(--accent); border-radius: 4px; padding: 0 5px; margin-left: 6px; }
+.bar-cell { min-width: 140px; }
+.bar { display: flex; align-items: center; gap: 8px; }
+.bar i { height: 8px; border-radius: 2px; background: var(--accent); min-width: 1px; }
+.bar.base i { background: var(--actual); }
+
+.imp { display: grid; grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto; gap: 8px 12px; align-items: center; font-size: 0.875rem; }
+.imp i { display: block; height: 8px; border-radius: 2px; background: var(--accent); min-width: 1px; }
+.imp code { font-family: var(--mono); font-size: 0.75rem; color: var(--muted); margin-left: 6px; }
+.notes { color: var(--muted); font-size: 0.875rem; max-width: 70ch; display: flex; flex-direction: column; gap: 6px; }
+.notes b { color: var(--fg); font-weight: 500; }
+
+@media (max-width: 860px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .two { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 440px) {
+  .cards { grid-template-columns: minmax(0, 1fr); }
+  h1 { font-size: 1.45rem; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>주간 변동성 예보</h1>
+    <p class="muted">이번 주까지의 일별 시세로 다음 주에 가격이 얼마나 크게 움직일지 예측합니다. 방향(상승·하락)은 예측하지 않습니다.</p>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <section aria-labelledby="h-forecast">
+    <div class="section-head">
+      <h2 id="h-forecast">이번 예보</h2>
+      <span class="muted small">연율화 변동성(%) · 카드를 누르면 아래 상세가 바뀝니다</span>
+    </div>
+    <div class="cards" id="cards"></div>
+  </section>
+
+  <section aria-labelledby="h-detail">
+    <div class="section-head">
+      <h2 id="h-detail">상세</h2>
+      <div class="seg" role="group" aria-label="기간">
+        <button type="button" id="range-1y" data-range="52" aria-pressed="true">최근 1년</button>
+        <button type="button" id="range-all" data-range="0" aria-pressed="false">테스트 전체</button>
+      </div>
+    </div>
+    <div class="two">
+      <div class="panel">
+        <div class="legend">
+          <span style="--c: var(--actual)">실제 변동성</span>
+          <span style="--c: var(--accent)">모델 예측 (한 주 전에 낸 값)</span>
+        </div>
+        <div class="chart-box"><canvas id="chart-history" role="img" aria-label="실제 변동성과 예측 변동성 추이"></canvas></div>
+        <div class="facts" id="facts"></div>
+      </div>
+      <div class="panel">
+        <div>
+          <h2>월별 변동성</h2>
+          <p class="muted small">그 해 평균 대비 몇 % 높거나 낮았는지</p>
+        </div>
+        <div class="chart-box short"><canvas id="chart-season" role="img" aria-label="월별 상대 변동성"></canvas></div>
+        <p class="small muted" id="season-note"></p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-models">
+    <div class="section-head">
+      <h2 id="h-models">모델 성적표: 다음 주 변동성 회귀</h2>
+      <span class="muted small" id="split-note"></span>
+    </div>
+    <div class="panel table-scroll">
+      <table id="tbl-models"></table>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-cls">
+    <div class="section-head">
+      <h2 id="h-cls">모델 성적표: 고변동 주간 분류</h2>
+      <span class="muted small">다음 주 변동성이 자산별 상위 30% 경계를 넘는지</span>
+    </div>
+    <div class="panel table-scroll">
+      <table id="tbl-cls"></table>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-imp">
+    <div class="section-head">
+      <h2 id="h-imp">예측에 많이 쓰인 특성</h2>
+      <span class="muted small">그레이디언트 부스팅의 순열 중요도 (섞었을 때 R² 감소)</span>
+    </div>
+    <div class="panel"><div class="imp" id="imp"></div></div>
+  </section>
+
+  <div class="notes">
+    <p><b>읽는 법.</b> 연율화 변동성 20%는 한 주 동안 대략 ±2.8% 범위에서 움직인다는 뜻입니다(20 ÷ √52). 예보 카드의 막대는 80% 예측 구간, 점선은 고변동 경계입니다.</p>
+    <p><b>한계.</b> 이 예보는 변동의 크기만 다루며 투자 권유가 아닙니다. 자산 4개와 한 번의 테스트 구간으로 평가한 수업 프로젝트 결과입니다.</p>
+  </div>
+</div>
+
+<script src="chart.umd.js"></script>
+<script src="data.js"></script>
+<script>
+(function () {
+  var D = window.VOL_DATA;
+  if (!D) {
+    document.getElementById('cards').textContent = 'data.js를 찾지 못했습니다. 노트북을 실행해 docs/data.js를 만들어 주세요.';
+    return;
+  }
+  var FEATURE_KO = {
+    lrv: '이번 주 변동성', lrv_lag1: '1주 전 변동성', lrv_lag2: '2주 전 변동성', lrv_lag3: '3주 전 변동성',
+    lrv_m4: '최근 4주 평균 변동성', lrv_m12: '최근 12주 평균 변동성', lrv_m52: '최근 52주 평균 변동성',
+    lpk: '이번 주 고가-저가 범위', ret: '이번 주 수익률', absret: '이번 주 수익률 크기', neg: '이번 주 하락분',
+    ret_m4: '최근 4주 누적 수익률', volr: '거래량 (12주 평균 대비)', lvix: 'VIX 수준', dvix: 'VIX 주간 변화',
+    fx_lrv: '원/달러 환율 변동성', sea_sin: '계절 (sin)', sea_cos: '계절 (cos)',
+    a_SP500: '자산: S&P 500', a_KOSPI: '자산: KOSPI', a_GOLD: '자산: 금 ETF', a_HITE: '자산: 하이트진로'
+  };
+  var state = { asset: D.assets[0].key, range: 52 };
+  var charts = {};
+  var f1 = function (v) { return v.toFixed(1); };
+  var css = function (name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); };
+  var el = function (tag, cls, text) {
+    var e = document.createElement(tag);
+    if (cls) e.className = cls;
+    if (text !== undefined) e.textContent = text;
+    return e;
+  };
+
+  // 머리말
+  var meta = document.getElementById('meta');
+  [['예측 대상 주', D.assets[0].forecast.week], ['데이터 기준일', D.last_date], ['예측 모델', D.best_model], ['분류 모델', D.cls_model]]
+    .forEach(function (p) {
+      var s = el('span'); s.append(p[0] + ' '); s.append(el('b', '', p[1])); meta.append(s);
+    });
+  document.getElementById('split-note').textContent =
+    '훈련 ~' + D.split.train_end.slice(0, 4) + ' · 검증 ~' + D.split.val_end.slice(0, 4) + ' · 테스트 ' +
+    (parseInt(D.split.val_end.slice(0, 4), 10) + 1) + '~ (' + D.split.n_test.toLocaleString() + '주)';
+
+  // 예보 카드
+  function renderCards() {
+    var box = document.getElementById('cards');
+    box.textContent = '';
+    D.assets.forEach(function (a) {
+      var f = a.forecast;
+      var card = el('button', 'card');
+      card.type = 'button';
+      card.id = 'card-' + a.key;
+      card.setAttribute('aria-pressed', String(a.key === state.asset));
+      card.addEventListener('click', function () { state.asset = a.key; renderCards(); renderDetail(); });
+
+      var top = el('div', 'card-top');
+      top.append(el('span', 'card-name', a.name), el('span', 'card-ticker', a.ticker));
+      var val = el('div', 'card-value', f1(f.forecast_vol));
+      val.append(el('small', '', ' %'));
+      var diff = f.forecast_vol - f.this_week_vol;
+      var change = el('div', 'card-change',
+        '지난주 ' + f1(f.this_week_vol) + '% 대비 ' + (diff >= 0 ? '▲ ' : '▼ ') + f1(Math.abs(diff)) + '%p');
+
+      var max = Math.max(f.high80, f.threshold) * 1.1;
+      var pct = function (v) { return (Math.min(v, max) / max * 100) + '%'; };
+      var range = el('div', 'range');
+      var band = el('i'); band.style.left = pct(f.low80); band.style.width = ((f.high80 - f.low80) / max * 100) + '%';
+      var mark = el('b'); mark.style.left = pct(f.forecast_vol);
+      var thr = el('u'); thr.style.left = pct(f.threshold); thr.title = '고변동 경계 ' + f1(f.threshold) + '%';
+      range.append(band, thr, mark);
+      var rl = el('div', 'range-label');
+      rl.append(el('span', '', '80% 구간 ' + f1(f.low80) + '–' + f1(f.high80)), el('span', '', '경계 ' + f1(f.threshold)));
+
+      var p = f.p_high;
+      var pill = el('span', 'pill ' + (p >= 0.6 ? 'high' : p <= 0.3 ? 'calm' : 'mid'),
+        (p >= 0.6 ? '고변동 주의' : p <= 0.3 ? '평온' : '보통') + ' · 고변동 확률 ' + Math.round(p * 100) + '%');
+      card.append(top, val, change, range, rl, pill);
+      box.append(card);
+    });
+  }
+
+  function baseOptions() {
+    var muted = css('--muted'), line = css('--line');
+    return {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { color: muted, maxTicksLimit: 7, maxRotation: 0, font: { size: 11 } }, border: { color: line } },
+        y: { grid: { color: line }, ticks: { color: muted, font: { size: 11 } }, border: { display: false }, beginAtZero: true }
+      }
+    };
+  }
+
+  function renderDetail() {
+    var a = D.assets.filter(function (x) { return x.key === state.asset; })[0];
+    document.getElementById('h-detail').textContent = '상세: ' + a.name;
+    var h = a.history, n = h.date.length, from = state.range ? Math.max(0, n - state.range) : 0;
+    var cut = function (arr) { return arr.slice(from); };
+
+    if (charts.history) charts.history.destroy();
+    var opt = baseOptions();
+    opt.scales.y.title = { display: true, text: '연율화 변동성 (%)', color: css('--muted'), font: { size: 11 } };
+    opt.plugins.tooltip = { callbacks: { label: function (c) { return c.dataset.label + ' ' + c.parsed.y.toFixed(1) + '%'; } } };
+    charts.history = new Chart(document.getElementById('chart-history'), {
+      type: 'line',
+      data: {
+        labels: cut(h.date),
+        datasets: [
+          { label: '실제', data: cut(h.actual), borderColor: css('--actual'), borderWidth: 1.2, pointRadius: 0, tension: 0 },
+          { label: '예측', data: cut(h.pred), borderColor: css('--accent'), borderWidth: 2, pointRadius: 0, tension: 0.2 }
+        ]
+      },
+      options: opt
+    });
+
+    var facts = document.getElementById('facts');
+    facts.textContent = '';
+    [['테스트 R² (모델)', a.r2.toFixed(3)], ['테스트 R² (지난주 값 그대로)', a.r2_naive.toFixed(3)],
+     ['고변동 경계', f1(a.forecast.threshold) + '%']].forEach(function (p) {
+      var f = el('div', 'fact'); f.append(el('span', '', p[0]), el('b', '', p[1])); facts.append(f);
+    });
+
+    if (charts.season) charts.season.destroy();
+    var dev = a.season_vol.map(function (v) { return (v - 1) * 100; });
+    var opt2 = baseOptions();
+    opt2.scales.y.beginAtZero = true;
+    opt2.scales.y.ticks.callback = function (v) { return (v > 0 ? '+' : '') + v + '%'; };
+    opt2.scales.x.ticks.maxTicksLimit = 12;
+    opt2.plugins.tooltip = { callbacks: { label: function (c) { return (c.parsed.y > 0 ? '+' : '') + c.parsed.y.toFixed(1) + '%'; } } };
+    charts.season = new Chart(document.getElementById('chart-season'), {
+      type: 'bar',
+      data: {
+        labels: ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12'].map(function (m) { return m + '월'; }),
+        datasets: [{ data: dev, backgroundColor: dev.map(function (v) { return v >= 0 ? css('--high') : css('--accent'); }), borderRadius: 2 }]
+      },
+      options: opt2
+    });
+    var hi = dev.indexOf(Math.max.apply(null, dev)) + 1, lo = dev.indexOf(Math.min.apply(null, dev)) + 1;
+    document.getElementById('season-note').textContent =
+      '가장 높은 달 ' + hi + '월, 가장 낮은 달 ' + lo + '월. 월 효과 검정 p = ' + a.season_p.toFixed(3) +
+      (a.season_p < 0.05 ? ' (통계적으로 유의한 계절성)' : ' (0.05보다 커서 계절성이 뚜렷하다고 보기 어려움)');
+  }
+
+  // 회귀 성적표
+  (function () {
+    var t = document.getElementById('tbl-models');
+    var head = el('tr');
+    ['모델', 'RMSE (낮을수록 좋음)', '기준선 대비', 'R²', 'MAE (%p)'].concat(D.assets.map(function (a) { return 'R² ' + a.name; }))
+      .forEach(function (h) { head.append(el('th', '', h)); });
+    t.append(head);
+    var max = Math.max.apply(null, D.models.map(function (m) { return m.rmse; }));
+    D.models.forEach(function (m) {
+      var base = m.group === '기준선';
+      var tr = el('tr', base ? 'base' : (m.name === D.best_model ? 'best' : ''));
+      var name = el('td', '', m.name);
+      name.append(el('span', 'tag', m.group));
+      if (m.name === D.best_model) name.append(el('span', 'badge', '예보에 사용'));
+      var barTd = el('td', 'bar-cell n');
+      var bar = el('div', 'bar' + (base ? ' base' : ''));
+      var fill = el('i'); fill.style.width = (m.rmse / max * 100) + 'px';
+      bar.append(fill, el('span', '', m.rmse.toFixed(3)));
+      barTd.append(bar);
+      tr.append(name, barTd,
+        el('td', 'n', base && m.vs_naive === 0 ? '기준' : (m.vs_naive > 0 ? '−' : '+') + Math.abs(m.vs_naive).toFixed(1) + '%'),
+        el('td', 'n', m.r2.toFixed(3)), el('td', 'n', m.mae_pp.toFixed(2)));
+      D.assets.forEach(function (a) { tr.append(el('td', 'n', m.r2_by_asset[a.key].toFixed(3))); });
+      t.append(tr);
+    });
+  })();
+
+  // 분류 성적표
+  (function () {
+    var t = document.getElementById('tbl-cls');
+    var head = el('tr');
+    ['모델', '정확도', '정밀도', '재현율', 'F1', 'AUC'].forEach(function (h) { head.append(el('th', '', h)); });
+    t.append(head);
+    D.classifiers.forEach(function (c, i) {
+      var tr = el('tr', i === 0 ? 'base' : (c.name === D.cls_model ? 'best' : ''));
+      var name = el('td', '', c.name);
+      if (c.name === D.cls_model) name.append(el('span', 'badge', '예보에 사용'));
+      tr.append(name);
+      ['accuracy', 'precision', 'recall', 'f1', 'auc'].forEach(function (k) {
+        tr.append(el('td', 'n', c[k] == null ? '–' : c[k].toFixed(3)));
+      });
+      t.append(tr);
+    });
+  })();
+
+  // 특성 중요도
+  (function () {
+    var box = document.getElementById('imp');
+    var max = Math.max.apply(null, D.importance.map(function (x) { return x.value; }));
+    D.importance.forEach(function (x) {
+      var label = el('span', '', FEATURE_KO[x.feature] || x.feature);
+      label.append(el('code', '', x.feature));
+      var bar = el('i'); bar.style.width = Math.max(0, x.value / max * 100) + '%';
+      box.append(label, el('div', '', '').appendChild(bar).parentNode, el('span', 'num small', x.value.toFixed(3)));
+    });
+  })();
+
+  // 기간 전환
+  Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (b) {
+    b.addEventListener('click', function () {
+      state.range = parseInt(b.dataset.range, 10);
+      Array.prototype.forEach.call(document.querySelectorAll('.seg button'), function (o) {
+        o.setAttribute('aria-pressed', String(o === b));
+      });
+      renderDetail();
+    });
+  });
+
+  renderCards();
+  renderDetail();
+  // 테마가 바뀌면 차트 색을 다시 읽는다
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', renderDetail);
+  new MutationObserver(renderDetail).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+})();
+</script>
+</body>
+</html>
