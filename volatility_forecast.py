@@ -737,7 +737,7 @@ season_ablation.round(4)
 # ## 11. 이번 주 예측과 웹 대시보드용 결과 내보내기
 #
 # 검증 성능이 가장 좋았던 모델로 **가장 최근에 끝난 주 다음 주**의 변동성을 예측하고,
-# 웹 대시보드(`docs/index.html`)가 읽는 `docs/data.js`를 만든다.
+# 웹 대시보드(`docs/volatility.html`)가 읽는 `docs/volatility_data.js`를 만든다.
 #
 # 예측 구간은 테스트 구간 잔차의 표준편차로 만든 80% 구간이다.
 
@@ -825,9 +825,9 @@ for i, key in enumerate(ASSETS):
     })
 
 os.makedirs("docs", exist_ok=True)
-with open("docs/data.js", "w", encoding="utf-8") as f:
+with open("docs/volatility_data.js", "w", encoding="utf-8") as f:
     f.write("window.VOL_DATA = " + json.dumps(export, ensure_ascii=False) + ";\n")
-print("docs/data.js 저장:", os.path.getsize("docs/data.js") // 1024, "KB")
+print("docs/volatility_data.js 저장:", os.path.getsize("docs/volatility_data.js") // 1024, "KB")
 
 # %% [markdown]
 # ## 정리
